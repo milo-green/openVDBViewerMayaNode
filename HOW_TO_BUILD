@@ -1,0 +1,92 @@
+
+Before you start it is assumed you have already downloaded and built the openvdb library (http://www.openvdb.org/)
+
+Building requires CMake 2.6 or later.
+
+------------BASICS---------------
+
+After compiling the openvdb library, you only need to set five more things:
+
+1. Where the Maya you build against is located.
+
+2. Where the VDB includes and libs you build against are located.
+
+3. Where the BOOST includes you build against are located.
+
+3. Where the OPENEXR includes you build against are located.
+
+5. Where to install the resulting plugins, MEL scripts & icons.
+
+
+1. is set a variable called MAYA_DIR. This is the root
+folder of your Maya installation and requires the Maya Development Kit
+to be present, in the default location.
+
+2. set  a variable called VDB_DIR. This is the root
+folder of your openVDB installation and requires /include and /lib sub-directories
+
+3. set  a variable called BOOST_DIR. This is the root
+folder of your BOOST installation and requires /include sub-directories, note this should be the same version you used to build the openvdb library with
+
+4. set  a variable called OPENEXR_DIR. This is the root
+folder of your openEXR installation and requires include sub-directories containing: OpenEXR/half.h
+
+5. is the output location for the install target, when invoked.
+This uses the default variable, CMAKE_INSTALL_PREFIX. So if you don't
+set this, it will use your platform's default (e.g. /usr/local, on
+CMake Linux).
+
+
+
+------------BOURNE SHELL BUILD---------------
+A typical build session for a Bourne shell would look something like
+this:
+
+  
+  export MAYA_DIR=/usr/autodesk/maya2011
+  export VDB_DIR=/path/to/openVDB/openvdb_1_1_0
+  export BOOST_DIR=/path/to/boost/boost/1.44.0
+  export OPENEXR_DIR=/path/to/OpenEXR/1.6.1
+
+  cd build
+  cmake -DCMAKE_INSTALL_PREFIX=../mayaInstallFiles -DMAYA_DIR=$MAYA_DIR  -DOPENEXR_DIR=$OPENEXR_DIR -DBOOST_DIR=$BOOST_DIR -DVDB_DIR=$VDB_DIR -Bbuild ..
+  make
+  sudo make install
+
+------------ ALTERNATE TCSH SHELL BUILD---------------
+
+  setenv MAYA_DIR /usr/autodesk/maya2011
+  setenv VDB_DIR /path/to/openVDB/openvdb_1_1_0
+  setenv BOOST_DIR /path/to/boost/boost/1.44.0
+  setenv OPENEXR_DIR /path/to/OpenEXR/1.6.1
+
+  cd build
+  cmake -DCMAKE_INSTALL_PREFIX=../mayaInstallFiles -DMAYA_DIR=$MAYA_DIR  -DOPENEXR_DIR=$OPENEXR_DIR -DBOOST_DIR=$BOOST_DIR -DVDB_DIR=$VDB_DIR -Bbuild ..
+
+  make
+  sudo make install
+
+  ------------INSTALL NOTES---------------
+
+
+However, to allow using specific install locations three additional
+variables are supported:
+
+  MAYA_PLUGIN_DIR
+  MAYA_SCRIPT_DIR
+  MAYA_ICON_DIR
+
+
+If omitted, these just inherit their locations from
+CMAKE_INSTALL_PREFIX:
+
+  MAYA_PLUGIN_DIR = $CMAKE_INSTALL_PREFIX/bin/plug-ins
+  MAYA_SCRIPT_DIR = $CMAKE_INSTALL_PREFIX/scripts/others
+  MAYA_ICON_DIR   = $CMAKE_INSTALL_PREFIX/icons
+
+
+ ------------LINKING AND LD LIBRARY PATH NOTES---------------
+
+  NOTE: once compiled,  + when loading maya you must make sure the openvdb library you linked agaist is in the LD_LIBRARY path i.e
+  setenv LD_LIBRARY_PATH ${LD_LIBRARY_PATH}:/path/to/openvdb/lib:
+

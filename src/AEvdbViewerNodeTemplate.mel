@@ -1,0 +1,342 @@
+/*
+ *
+ *  AEvdbViewerNodeTemplate.mel
+
+ *  $Revision: 1 $
+ *  $Date: 2013-06-07  $
+ *  $Author: miles green $
+ *
+ */
+
+proc string formatLargeNumber( string $num )
+{
+    string $result = "";
+    string $tmp = $num;
+    int $i = 0;
+    while( $tmp != "" && $i < 10 )
+    {
+        $result = (","+match("[0-9]{1,3}$", $tmp)) + $result;
+        $tmp    = substitute("[0-9]{1,3}$", $tmp, "");
+        $i++;
+    }
+    return substring( $result, 2, 20 );
+}
+
+global proc vdbForceAEUpdate()
+{
+    global string   $gAEFocusNode;
+    if ( objExists( $gAEFocusNode ) ) {
+        if ( nodeType($gAEFocusNode) == "transform" )
+        {
+            string $shapes[] = `listRelatives -c -type vdbViewerNode $gAEFocusNode`;
+            if ( $shapes[0] != "" ) updateAE($shapes[0]);
+        }
+        else if ( nodeType($gAEFocusNode) == "vdbViewerNode" )
+        {
+            updateAE($gAEFocusNode);
+        }
+    }
+}
+
+global proc string vdbFileNew( string $nodeAttr  )
+{
+    string $parent = `setParent -q`;
+    string $attribute = `substitute "^.*\\." $nodeAttr ""`;
+    string $uiBase = ( "vdbFilename_" + $attribute );
+
+    rowLayout -nc 3 ($uiBase+"Layout");
+    text -l "vdb File" ($uiBase+"Label");
+    textField ($uiBase+"Field");
+    iconTextButton -w 32 -h 24
+                   -mw 0 -mh 0
+                   -style "iconOnly"
+                   -image "fileOpen.xpm"
+                   ($uiBase+"EdBut");
+    setParent ..;
+
+    vdbFileReplace( $nodeAttr );
+
+    setParent $parent;
+    return ($uiBase+"Layout");
+}
+
+global proc string vdbFileReplace( string $nodeAttr )
+{
+    string $attribute = `substitute "^.*\\." $nodeAttr ""`;
+    string $uiBase = ( "vdbFilename_" + $attribute );
+
+    connectControl ($uiBase+"Field") $nodeAttr;
+    string $cmd = "vdbPickFile " + $nodeAttr;
+    iconTextButton -e -c $cmd ($uiBase+"EdBut");
+
+    return $uiBase+"Layout";
+}
+
+global proc vdbPickFileCallback( string $plug, int $picked, string $path, string $mode, string $type )
+{
+    if ( $picked )
+        setAttr -type "string" $plug $path;
+}
+
+global proc int vdbPickFileOSSCallback( string $plug, string $path, string $type )
+{
+    if ( match("\.vdb.*$", $path) != "" )
+    {
+        setAttr -type "string" $plug $path;
+        return 1;
+    }
+    else
+    {
+        error("Please select a vdb file with a '.vdb*' suffix.");
+        return 0;
+    }
+}
+
+
+global proc vdbPickFile( string $plug )
+{
+    string $file = `getAttr $plug`;
+    string $dir = `match ".*/" $file`;
+
+    
+
+	fileBrowser( ("vdbPickFileOSSCallback \""+$plug+"\""), "Load", "", 0);
+    
+}
+
+
+global proc vdbChannels( string $nodeName )
+{
+    global string $gLastVdbViewerNode;
+    global string $gLastVdbViewerNodeFile;
+
+    string $uip = `setParent -q`;
+    string $ctl = "vdbChannelsMenuCtl";
+
+    // create the ctl if need be
+    //
+    if ( ! `optionMenu -q -ex $ctl` ) {
+        string $fl = `formLayout`;
+        optionMenu -l "Channels" $ctl;
+        formLayout -e -af $ctl left 87 $fl;
+        menuItem -l "None";
+        optionMenu -e -sl 1 $ctl;
+        $gLastVdbViewerNode = "";
+    }
+
+    // get comparison vars
+    //
+    string $node = match("^[^\\.]+", $nodeName);
+    string $file = `getAttr ($node+".vdbFile")`;
+    string $channels[] = `getAttr ($node+".channelNames")`;
+
+
+    if ( $nodeName != $gLastVdbViewerNode || $file != $gLastVdbViewerNodeFile )
+    {
+        //trace("\n * REFRESH");
+        int $chan = `getAttr $nodeName`;
+        //trace("Channel Value : "+$chan);
+
+        // remove old menu items if need be
+        //
+        string $menuItems[] = `optionMenu -q -ill $ctl`;
+        for ( $mni in $menuItems ) deleteUI $mni;
+        //trace(" * removed old items");
+
+        // add the channel names
+        //
+        int $i = 0;
+        setParent -menu $ctl;
+        for ( $ch in $channels ) {
+            menuItem -p $ctl -l $ch -data $i;
+            //trace(" + "+$ch+"  "+$i);
+            $i++;
+        }
+        string $noneMenuItem = `menuItem -p $ctl -l "None" -data $i`;
+
+        // connect the ctl to the attr
+        //
+        optionMenu -e -sl (++$i) $ctl;
+        evalDeferred("connectControl "+$ctl+" "+$nodeName);
+        //trace(" + Connect to "+$nodeName);
+
+        // This is fixing a refresh problem on Linux
+        //
+        if ( `optionMenu -q -ni $ctl` > 1 ) deleteUI $noneMenuItem;
+
+        // update globals
+        //
+        $gLastVdbViewerNode = $nodeName;
+        $gLastVdbViewerNodeFile = $file;
+    }
+
+    setParent $uip;
+}
+
+
+global proc vdbInfosNew( string $nodeName )
+{
+    string $uip = `setParent -q`;
+
+    formLayout -nd 100 vdbInfosL;
+            text -l "Name :"     -al "right" -fn "smallPlainLabelFont"  -w 60 vdbl1;
+            text -l "Nothing loaded"       -al "left"  -fn "tinyBoldLabelFont"    -w 200 vdbd1;
+            text -l "Points :"   -al "right" -fn "smallPlainLabelFont"  -w 60 vdbl2;
+            text -l "0"          -al "left"  -fn "tinyBoldLabelFont"    -w 200 vdbd2;
+            text -l "Channels :" -al "right" -fn "smallPlainLabelFont"  -w 60 vdbl3;
+            text -l "0"          -al "left"  -fn "tinyBoldLabelFont"    -w 200 vdbd3;
+
+    formLayout  -e
+                -af     vdbl1   top     0
+                -af     vdbl1   left    50
+                -aoc    vdbd1   top     0   vdbl1
+                -ac     vdbd1   left    0   vdbl1
+
+                -ac     vdbl2   top     0   vdbl1
+                -af     vdbl2   left    50
+                -aoc    vdbd2   top     0   vdbl2
+                -ac     vdbd2   left    0   vdbl2
+                -an     vdbd2   right
+
+                -ac     vdbl3   top     0   vdbl2
+                -af     vdbl3   left    50
+                -aoc    vdbd3   top     0   vdbl3
+                -ac     vdbd3   left    0   vdbl3
+                -an     vdbd3   right
+
+                vdbInfosL;
+
+    setParent $uip;
+    vdbInfosReplace( $nodeName );
+}
+
+global proc vdbInfosReplace( string $nodeName )
+{
+    string $node = match("^[^\\.]+", $nodeName);
+
+    // vdb name
+    string $name = `getAttr ($node+".vdbFile")`;
+    $name = match("[^/]+$", $name);
+    text -e -l $name vdbd1;
+
+    // number of points
+    string $num = `getAttr ($node+".numPoints")`;
+    $num = formatLargeNumber($num);
+    string $loaded = `getAttr ($node+".numPointsLoaded")`;
+    $loaded = formatLargeNumber($loaded);
+    text -e -l ($num+"  -  [  "+$loaded+" loaded  ]") vdbd2;
+
+    // number of channels
+    string $nChannels = size( `getAttr ($node+".channelNames")` );
+    text -e -l $nChannels vdbd3;
+}
+
+global proc vdbState( string $nodeName )
+{
+    string $node = match("^[^\\.]+", $nodeName);
+    string $currentChannel = "None";
+    if ( `optionMenu -q -ex vdbChannelsMenuCtl` )
+    {
+        $currentChannel = `optionMenu -q -v vdbChannelsMenuCtl`;
+    }
+    int $isVector    = gmatch( $currentChannel, "vector *");
+    int $isVector    = gmatch( $currentChannel, "Vector *");
+    int $showVectors = `getAttr ($node+".showVectors")`;
+
+    if ( $showVectors || $isVector || $isVector )
+    {
+        editorTemplate -dimControl $node "VectorsSize" false;
+        editorTemplate -dimControl $node "negateVectorsColor" false;
+    } else {
+        editorTemplate -dimControl $node "VectorsSize" true;
+        editorTemplate -dimControl $node "negateVectorsColor" true;
+    }
+}
+
+global proc vdbBoolean( string $nodeName )
+{
+    string $parent = `setParent -q`;
+    string $attribute = `substitute "^.*\\." $nodeName ""`;
+    string $uiBase = ( "vdbBool_" + $attribute );
+    string $ctlLayout = ($uiBase+"Layout");
+
+    if ( !`rowLayout -q -ex $ctlLayout` ) {
+        // NEW
+        rowLayout -nc 2 -cw 2 15 $ctlLayout;
+        text -fn "smallPlainLabelFont" -l (interToUI($attribute));
+        checkBox -l " " ($uiBase+"Field");
+    }
+    // REPLACE
+    setParent $ctlLayout;
+    checkBox -e -cc ("vdbState "+$nodeName) ($uiBase+"Field");
+    connectControl ($uiBase+"Field") $nodeName;
+
+    setParent $parent;
+    vdbState($nodeName);
+
+}
+
+
+global proc AEvdbViewerNodeTemplate( string $nodeName )
+{
+    editorTemplate -beginScrollLayout;
+
+        editorTemplate -callCustom "vdbFileNew" "vdbFileReplace" "vdbFile";
+
+        editorTemplate -addSeparator;
+
+            editorTemplate -callCustom "vdbInfosNew" "vdbInfosReplace" "vdbFile";
+            editorTemplate -suppress   "vdbFile";
+
+        editorTemplate -addSeparator;
+
+            editorTemplate -callCustom "vdbChannels" "vdbChannels" "channel";
+            editorTemplate -addControl "displayAs";
+            editorTemplate -addControl "percentLoaded";
+            editorTemplate -addControl "pointSize";
+            editorTemplate -addControl "exposure";
+            editorTemplate -addControl "invert";
+            editorTemplate -addControl "absoluteValue";
+            editorTemplate -addControl "smooth";
+            editorTemplate -label "Show Values (slow)" -addControl "showValue";
+            editorTemplate -addControl "showProgressWindow";
+            editorTemplate -addControl "showVoxelTree";
+            editorTemplate -suppress   "time";
+
+        editorTemplate -beginLayout "Filter" -collapse true;
+            editorTemplate -addControl "filterVariable";
+            editorTemplate -addControl "filterMode";
+            editorTemplate -label "Radius v1" -addControl "filterValf1";
+            editorTemplate -label "Radius v2" -addControl "filterValf2";
+            editorTemplate -label "Channel Value v1" -addControl "filterValc1";
+            editorTemplate -label "Channel Value v2" -addControl "filterValc2";
+        editorTemplate -endLayout;
+
+        editorTemplate -beginLayout "Crop Box" -collapse false;
+            editorTemplate -addControl "useCropBox";
+            editorTemplate -addControl "cropBoxMin";
+            editorTemplate -addControl "cropBoxMax";
+        editorTemplate -endLayout;
+
+        editorTemplate -beginLayout "Vectors" -collapse true;
+            editorTemplate -callCustom "vdbBoolean" "vdbBoolean" "showVectors";
+            editorTemplate -suppress   "showVectors";
+            editorTemplate -addControl "VectorsSize";
+            editorTemplate -addControl "negateVectorsColor";
+        editorTemplate -endLayout;
+
+        editorTemplate -callCustom "vdbState" "vdbState" "message";
+
+        editorTemplate -beginLayout "Prefs" -collapse true;
+            editorTemplate -addControl "circleSlices";
+            editorTemplate -addControl "diskSlices";
+            editorTemplate -addControl "filterOn";
+        editorTemplate -endLayout;
+
+        editorTemplate -addExtraControls;
+
+
+    editorTemplate -endScrollLayout;
+
+}
+
